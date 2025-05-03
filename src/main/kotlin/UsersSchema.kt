@@ -8,20 +8,31 @@ import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransacti
 import org.jetbrains.exposed.sql.transactions.transaction
 
 @Serializable
-data class ExposedMusicUser(val phone: String?, val email: String?)
+data class ExposedMusicUser(
+    val phone: String?,
+    val email: String?,
+    val role: String = "Listener"
+)
+
+@Serializable
+data class UserResponse(
+    val id: Int,
+    val phone: String?,
+    val email: String?,
+    val role: String
+)
 
 class MusicUserService(database: Database) {
-    object MusicUsers : Table("music_user") {
+    object MusicUsers : Table("music_users") {
         val id = integer("id").autoIncrement()
         val phone = varchar("phone", length = 15).nullable()
         val email = varchar("email", length = 100).nullable()
+        val role = varchar("role", length = 50).default("Listener")
 
         override val primaryKey = PrimaryKey(id)
 
         init {
-            check {
-                (phone neq null) or (email neq null)
-            }
+            check { (phone neq null) or (email neq null) }
         }
     }
 
@@ -31,54 +42,68 @@ class MusicUserService(database: Database) {
         }
     }
 
-    suspend fun create(user: ExposedMusicUser): Int = dbQuery {
-    MusicUsers.insert { insert ->
-        user.phone?.let { insert[phone] = it }
-        user.email?.let { insert[email] = it }
+    suspend fun create(user: ExposedMusicUser): UserResponse = dbQuery {
+        val id = MusicUsers.insert { insert ->
+            user.phone?.let { insert[phone] = it }
+            user.email?.let { insert[email] = it }
+            insert[role] = user.role
+        }[MusicUsers.id]
 
-        // Проверка, что хотя бы одно поле заполнено
-        if (user.phone == null && user.email == null) {
-            throw IllegalArgumentException("Должен быть указан phone или email")
+        UserResponse(id, user.phone, user.email, user.role)
+    }
+
+    suspend fun findUser(phone: String? = null, email: String? = null): UserResponse? {
+    return dbQuery {
+        val query = MusicUsers.selectAll()
+
+        when {
+            phone != null && email != null ->
+                query.where { (MusicUsers.phone eq phone) or (MusicUsers.email eq email) }
+            phone != null ->
+                query.where { MusicUsers.phone eq phone }
+            email != null ->
+                query.where { MusicUsers.email eq email }
+            else ->
+                return@dbQuery null
         }
-    }[MusicUsers.id]
+
+        query.singleOrNull()?.let { row ->
+            UserResponse(
+                id = row[MusicUsers.id],
+                phone = row[MusicUsers.phone],
+                email = row[MusicUsers.email],
+                role = row[MusicUsers.role]
+            )
+        }
+    }
 }
 
-    suspend fun read(phone: String? = null, email: String? = null): ExposedMusicUser? {
+    suspend fun getAllUsers(): List<UserResponse> {
         return dbQuery {
-            val query = MusicUsers.selectAll().where {
-                (MusicUsers.phone eq phone) or (MusicUsers.email eq email)
+            MusicUsers.selectAll().map { row ->
+                UserResponse(
+                    id = row[MusicUsers.id],
+                    phone = row[MusicUsers.phone],
+                    email = row[MusicUsers.email],
+                    role = row[MusicUsers.role]
+                )
             }
-
-            query
-                .map { ExposedMusicUser(it[MusicUsers.phone], it[MusicUsers.email]) }
-                .singleOrNull()
         }
     }
 
-    suspend fun readAll(): List<ExposedMusicUser> {
+    suspend fun updateUser(id: Int, user: ExposedMusicUser): Boolean {
         return dbQuery {
-            MusicUsers.selectAll()
-                .map { row ->
-                    ExposedMusicUser(
-                        phone = row[MusicUsers.phone],
-                        email = row[MusicUsers.email]
-                    )
-                }
-        }
-    }
-
-    suspend fun update(id: Int, user: ExposedMusicUser) {
-        dbQuery {
             MusicUsers.update({ MusicUsers.id eq id }) {
-                it[phone] = user.phone
-                it[email] = user.email
-            }
+                user.phone?.let { phone -> it[MusicUsers.phone] = phone }
+                user.email?.let { email -> it[MusicUsers.email] = email }
+                it[role] = user.role
+            } > 0
         }
     }
 
-    suspend fun delete(id: Int) {
-        dbQuery {
-            MusicUsers.deleteWhere { MusicUsers.id eq id }
+    suspend fun deleteUser(id: Int): Boolean {
+        return dbQuery {
+            MusicUsers.deleteWhere { MusicUsers.id eq id } > 0
         }
     }
 

@@ -17,35 +17,52 @@ fun Application.configureDatabases() {
     )
     val userService = MusicUserService(database)
     routing {
-
         // Create user
         post("/users") {
             val user = call.receive<ExposedMusicUser>()
-            val id = userService.create(user)
-            call.respond(HttpStatusCode.Created, id)
+            val createdUser = userService.create(user)
+            call.respond(HttpStatusCode.Created, createdUser)
         }
 
+        // Get all users
         get("/users") {
-            val users = userService.readAll()
-            call.respond(
-                HttpStatusCode.OK,
-                users // Теперь можно напрямую передавать объекты, так как установлена сериализация
-            )
+            val users = userService.getAllUsers() // Используем правильное имя метода
+            call.respond(HttpStatusCode.OK, users)
+        }
+
+        // Get user by phone or email
+        get("/users/find") {
+            val phone = call.request.queryParameters["phone"]
+            val email = call.request.queryParameters["email"]
+            val user = userService.findUser(phone, email)
+            if (user != null) {
+                call.respond(HttpStatusCode.OK, user)
+            } else {
+                call.respond(HttpStatusCode.NotFound)
+            }
         }
 
         // Update user
         put("/users/{id}") {
             val id = call.parameters["id"]?.toInt() ?: throw IllegalArgumentException("Invalid ID")
             val user = call.receive<ExposedMusicUser>()
-            userService.update(id, user)
-            call.respond(HttpStatusCode.OK)
+            val updated = userService.updateUser(id, user)
+            if (updated) {
+                call.respond(HttpStatusCode.OK)
+            } else {
+                call.respond(HttpStatusCode.NotFound)
+            }
         }
 
         // Delete user
         delete("/users/{id}") {
             val id = call.parameters["id"]?.toInt() ?: throw IllegalArgumentException("Invalid ID")
-            userService.delete(id)
-            call.respond(HttpStatusCode.OK)
+            val deleted = userService.deleteUser(id)
+            if (deleted) {
+                call.respond(HttpStatusCode.OK)
+            } else {
+                call.respond(HttpStatusCode.NotFound)
+            }
         }
     }
 }

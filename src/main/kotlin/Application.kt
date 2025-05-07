@@ -9,4 +9,6 @@ fun main(args: Array<String>) {
 fun Application.module() {
     configureDatabases()
     configureSerialization()
+    configureRouting() // trackRoutes уже вызывается внутри configureRouting
+
 }
